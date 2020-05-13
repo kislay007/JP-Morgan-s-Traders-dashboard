@@ -1,0 +1,125 @@
+From 6d2b524b42b1e3fd4e5b33404c27d2a1dcfc3a8a Mon Sep 17 00:00:00 2001
+From: Kislay Raj <kislaykishu@gmail.com>
+Date: Wed, 13 May 2020 03:38:51 +0530
+Subject: [PATCH] Create Patch File
+
+---
+ src/DataManipulator.ts | 32 +++++++++++++++++++++++---------
+ src/Graph.tsx          | 29 ++++++++++++++++++-----------
+ 2 files changed, 41 insertions(+), 20 deletions(-)
+
+diff --git a/src/DataManipulator.ts b/src/DataManipulator.ts
+index f6b15ff..9517282 100644
+--- a/src/DataManipulator.ts
++++ b/src/DataManipulator.ts
+@@ -1,20 +1,34 @@
+ import { ServerRespond } from './DataStreamer';
+ 
+ export interface Row {
+-  stock: string,
+-  top_ask_price: number,
++  price_abc: number,
++  price_def: number,
++  ratio: number,  
+   timestamp: Date,
++  upper_bound: number,
++  lower_bound: number,
++  trigger_alert: number | undefined,
+ }
+ 
++//Processing raw data
+ 
+ export class DataManipulator {
+-  static generateRow(serverResponds: ServerRespond[]): Row[] {
+-    return serverResponds.map((el: any) => {
+-      return {
+-        stock: el.stock,
+-        top_ask_price: el.top_ask && el.top_ask.price || 0,
+-        timestamp: el.timestamp,
++  static generateRow(serverRespond: ServerRespond[]): Row {
++    const priceABC=(serverRespond[0].top_ask.price + serverRespond[0].top_bid.price) / 2;
++    const priceDEF=(serverRespond[1].top_ask.price + serverRespond[1].top_bid.price) / 2;
++    const ratio = priceABC/priceDEF;
++    const upperBound = 1 + 0.05;
++    const lowerBound = 1 - 0.05; 
++    return {
++        price_abc: priceABC,
++        price_def: priceDEF,
++        ratio,
++        timestamp: serverRespond[0].timestamp > serverRespond[1].timestamp ?
++          serverRespond[0].timestamp : serverRespond[1].timestamp,
++        upper_bound: upperBound,
++        lower_bound: lowerBound,
++        trigger_alert: (ratio > upperBound || ratio < lowerBound) ? ratio : undefined,
+       };
+-    })
++    
+   }
+ }
+diff --git a/src/Graph.tsx b/src/Graph.tsx
+index 58fb997..c43b2a3 100644
+--- a/src/Graph.tsx
++++ b/src/Graph.tsx
+@@ -8,6 +8,8 @@ interface IProps {
+   data: ServerRespond[],
+ }
+ 
++//Perspective
++
+ interface PerspectiveViewerElement extends HTMLElement {
+   load: (table: Table) => void,
+ }
+@@ -23,10 +25,13 @@ class Graph extends Component<IProps, {}> {
+     const elem = document.getElementsByTagName('perspective-viewer')[0] as unknown as PerspectiveViewerElement;
+ 
+     const schema = {
+-      stock: 'string',
+-      top_ask_price: 'float',
+-      top_bid_price: 'float',
+-      timestamp: 'date',
++      price_abc: 'float',
++      price_def: 'float',
++      ratio: 'float',
++      upper_bound: 'float',
++      lower_bound: 'float',
++      trigger_alert: 'float',
++      timestamp: 'date'
+     };
+ 
+     if (window.perspective && window.perspective.worker()) {
+@@ -36,23 +41,25 @@ class Graph extends Component<IProps, {}> {
+       // Load the `table` in the `<perspective-viewer>` DOM reference.
+       elem.load(this.table);
+       elem.setAttribute('view', 'y_line');
+-      elem.setAttribute('column-pivots', '["stock"]');
+       elem.setAttribute('row-pivots', '["timestamp"]');
+-      elem.setAttribute('columns', '["top_ask_price"]');
++      elem.setAttribute('column', '["ratio", "lower_bound", "upper_bound", "trigger_alert"]');
+       elem.setAttribute('aggregates', JSON.stringify({
+-        stock: 'distinctcount',
+-        top_ask_price: 'avg',
+-        top_bid_price: 'avg',
++        price_abc: 'avg',
++        price_def: 'avg',
++        ratio: 'avg',
+         timestamp: 'distinct count',
++        upper_bound: 'avg',
++        lower_bound: 'avg',
++        trigger_alert: 'avg' 
+       }));
+     }
+   }
+ 
+   componentDidUpdate() {
+     if (this.table) {
+-      this.table.update(
++      this.table.update([
+         DataManipulator.generateRow(this.props.data),
+-      );
++      ]);
+     }
+   }
+ }
+-- 
+2.22.0.windows.1
+
